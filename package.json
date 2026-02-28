@@ -1,0 +1,31 @@
+{
+  "name": "polymarket-terminal",
+  "version": "1.0.0",
+  "description": "Dominance / trend trading terminal for Polymarket short-duration Up/Down markets",
+  "main": "src/trend.js",
+  "type": "module",
+  "scripts": {
+    "start": "DRY_RUN=false node src/trend.js",
+    "dev": "DRY_RUN=true nodemon --ignore 'data/*.json' src/trend.js",
+    "trend": "DRY_RUN=false node src/trend.js",
+    "trend-sim": "DRY_RUN=true node src/trend.js",
+    "trend-dev": "DRY_RUN=true nodemon --ignore 'data/*.json' src/trend.js"
+  },
+  "keywords": [
+    "polymarket",
+    "dominance",
+    "trend"
+  ],
+  "author": "direkturcrypto",
+  "license": "ISC",
+  "dependencies": {
+    "@polymarket/clob-client": "^4.7.3",
+    "blessed": "^0.1.81",
+    "dotenv": "^16.4.7",
+    "ethers": "^5.8.0",
+    "ws": "^8.19.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9"
+  }
+}
