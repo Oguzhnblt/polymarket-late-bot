@@ -96,7 +96,7 @@ function buildHeader() {
     const assets = config.dominanceAssets.map((a) => a.toUpperCase()).join('  ');
 
     headerBox.setContent(
-        ` {bold}Polymarket Trend Board{/bold}  ${mode}` +
+        ` {bold}Polymarket Oracle-Follow Board{/bold}  ${mode}` +
         `  ${SEP}  ⏱  {bold}${mins}m ${pad2(secs)}s{/bold}` +
         `  ${SEP}  ${assets}`,
     );
@@ -331,7 +331,7 @@ function updateTUI() {
 export function initTUI() {
     screen = blessed.screen({
         smartCSR: true,
-        title: 'Polymarket Trend Board',
+        title: 'Polymarket Oracle-Follow Board',
         forceUnicode: true,
         fullUnicode: true,
     });
