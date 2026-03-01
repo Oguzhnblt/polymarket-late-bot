@@ -2,7 +2,11 @@ import WebSocket from 'ws';
 import config from '../config/index.js';
 import logger from '../utils/logger.js';
 
-const BINANCE_WS_BASE = 'wss://stream.binance.com:9443';
+const BINANCE_WS_BASES = [
+    'wss://stream.binance.com:9443',
+    'wss://stream.binance.com:443',
+    'wss://data-stream.binance.vision',
+];
 const INITIAL_RECONNECT_DELAY_MS = 1000;
 const MAX_RECONNECT_DELAY_MS = 10000;
 
@@ -11,6 +15,7 @@ let reconnectTimer = null;
 let reconnectDelayMs = INITIAL_RECONNECT_DELAY_MS;
 let shuttingDown = false;
 let started = false;
+let wsBaseIndex = 0;
 
 const stateByAsset = new Map();
 
@@ -27,7 +32,15 @@ function getStreamNames() {
 
 function getWsUrl() {
     const streams = getStreamNames().join('/');
-    return `${BINANCE_WS_BASE}/stream?streams=${streams}`;
+    return `${BINANCE_WS_BASES[wsBaseIndex]}/stream?streams=${streams}`;
+}
+
+function getCurrentWsBase() {
+    return BINANCE_WS_BASES[wsBaseIndex];
+}
+
+function advanceWsBase() {
+    wsBaseIndex = (wsBaseIndex + 1) % BINANCE_WS_BASES.length;
 }
 
 function getOrCreateState(asset) {
@@ -131,7 +144,9 @@ function connect() {
 
     ws.on('open', () => {
         reconnectDelayMs = INITIAL_RECONNECT_DELAY_MS;
-        logger.info(`Reference feed connected (${config.dominanceDuration.toUpperCase()} Binance spot)`);
+        logger.info(
+            `Reference feed connected (${config.dominanceDuration.toUpperCase()} Binance spot via ${getCurrentWsBase()})`,
+        );
     });
 
     ws.on('message', (raw) => {
@@ -147,7 +162,13 @@ function connect() {
     });
 
     ws.on('error', (err) => {
-        logger.warn(`Reference feed error: ${err.message}`);
+        const msg = String(err?.message || '');
+        if (/ENOTFOUND|EAI_AGAIN|getaddrinfo/i.test(msg)) {
+            advanceWsBase();
+            logger.warn(`Reference feed DNS error: ${msg} | switching to ${getCurrentWsBase()}`);
+        } else {
+            logger.warn(`Reference feed error: ${msg}`);
+        }
         cleanupSocket(true);
     });
 }
@@ -156,6 +177,7 @@ export function startReferencePriceFeed() {
     if (started) return;
     started = true;
     shuttingDown = false;
+    wsBaseIndex = 0;
     stateByAsset.clear();
     connect();
 }

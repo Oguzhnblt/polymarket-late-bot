@@ -46,6 +46,10 @@ logger.info(
         .join(' | ')}`,
 );
 logger.info(`Ref Move  : ${config.dominanceRefMoveBps}bps`);
+logger.info(
+    `Ref Bands : >= $${config.dominanceHighPriceCutoff} => ${config.dominanceHighPriceRefMoveBps}bps x${config.dominanceHighPriceSizeMultiplier.toFixed(2)} | ` +
+    `>= $${config.dominanceExtremePriceCutoff} => ${config.dominanceExtremePriceRefMoveBps}bps x${config.dominanceExtremePriceSizeMultiplier.toFixed(2)}`,
+);
 logger.info(`Ref Exit  : ${config.dominanceRefInvalidationBps}bps / ${config.dominanceRefInvalidationConfirmMs}ms`);
 logger.info(`Window    : ${config.dominanceLateEntryWindowSec}s -> ${config.dominanceMinTimeLeftSec}s left`);
 logger.info(`Entry     : $${config.dominanceEntryCutoff} to $${config.dominanceMaxEntryPrice}`);

@@ -53,6 +53,12 @@ const config = {
   dominanceMinTimeLeftSec: Number(process.env.DOMINANCE_MIN_TIME_LEFT_SEC),
   dominanceRefMoveBps: Number(process.env.DOMINANCE_REF_MOVE_BPS),
   dominanceRefConfirmMs: Number(process.env.DOMINANCE_REF_CONFIRM_MS),
+  dominanceHighPriceCutoff: Number(process.env.DOMINANCE_HIGH_PRICE_CUTOFF),
+  dominanceExtremePriceCutoff: Number(process.env.DOMINANCE_EXTREME_PRICE_CUTOFF),
+  dominanceHighPriceRefMoveBps: Number(process.env.DOMINANCE_HIGH_PRICE_REF_MOVE_BPS),
+  dominanceExtremePriceRefMoveBps: Number(process.env.DOMINANCE_EXTREME_PRICE_REF_MOVE_BPS),
+  dominanceHighPriceSizeMultiplier: Number(process.env.DOMINANCE_HIGH_PRICE_SIZE_MULTIPLIER),
+  dominanceExtremePriceSizeMultiplier: Number(process.env.DOMINANCE_EXTREME_PRICE_SIZE_MULTIPLIER),
   dominanceRefInvalidationBps: Number(process.env.DOMINANCE_REF_INVALIDATION_BPS),
   dominanceRefInvalidationConfirmMs: Number(process.env.DOMINANCE_REF_INVALIDATION_CONFIRM_MS),
   dominanceEntryCutoff: Number(process.env.DOMINANCE_ENTRY_CUTOFF),
@@ -92,6 +98,18 @@ export function validateDominanceConfig() {
     throw new Error('DOMINANCE_REF_MOVE_BPS is required in .env');
   if (!Number.isFinite(config.dominanceRefConfirmMs))
     throw new Error('DOMINANCE_REF_CONFIRM_MS is required in .env');
+  if (!Number.isFinite(config.dominanceHighPriceCutoff))
+    throw new Error('DOMINANCE_HIGH_PRICE_CUTOFF is required in .env');
+  if (!Number.isFinite(config.dominanceExtremePriceCutoff))
+    throw new Error('DOMINANCE_EXTREME_PRICE_CUTOFF is required in .env');
+  if (!Number.isFinite(config.dominanceHighPriceRefMoveBps))
+    throw new Error('DOMINANCE_HIGH_PRICE_REF_MOVE_BPS is required in .env');
+  if (!Number.isFinite(config.dominanceExtremePriceRefMoveBps))
+    throw new Error('DOMINANCE_EXTREME_PRICE_REF_MOVE_BPS is required in .env');
+  if (!Number.isFinite(config.dominanceHighPriceSizeMultiplier))
+    throw new Error('DOMINANCE_HIGH_PRICE_SIZE_MULTIPLIER is required in .env');
+  if (!Number.isFinite(config.dominanceExtremePriceSizeMultiplier))
+    throw new Error('DOMINANCE_EXTREME_PRICE_SIZE_MULTIPLIER is required in .env');
   if (!Number.isFinite(config.dominanceRefInvalidationBps))
     throw new Error('DOMINANCE_REF_INVALIDATION_BPS is required in .env');
   if (!Number.isFinite(config.dominanceRefInvalidationConfirmMs))
@@ -118,6 +136,10 @@ export function validateDominanceConfig() {
     throw new Error('DOMINANCE_ENTRY_CUTOFF must be between 0 and 1');
   if (config.dominanceMaxEntryPrice <= 0 || config.dominanceMaxEntryPrice >= 1)
     throw new Error('DOMINANCE_MAX_ENTRY_PRICE must be between 0 and 1');
+  if (config.dominanceHighPriceCutoff <= 0 || config.dominanceHighPriceCutoff >= 1)
+    throw new Error('DOMINANCE_HIGH_PRICE_CUTOFF must be between 0 and 1');
+  if (config.dominanceExtremePriceCutoff <= 0 || config.dominanceExtremePriceCutoff >= 1)
+    throw new Error('DOMINANCE_EXTREME_PRICE_CUTOFF must be between 0 and 1');
   if (config.dominanceMaxSpread <= 0 || config.dominanceMaxSpread >= 1)
     throw new Error('DOMINANCE_MAX_SPREAD must be between 0 and 1');
   if (config.dominanceMinTopSize <= 0)
@@ -132,6 +154,14 @@ export function validateDominanceConfig() {
     throw new Error('DOMINANCE_REF_MOVE_BPS must be > 0');
   if (config.dominanceRefConfirmMs <= 0)
     throw new Error('DOMINANCE_REF_CONFIRM_MS must be > 0');
+  if (config.dominanceHighPriceRefMoveBps < config.dominanceRefMoveBps)
+    throw new Error('DOMINANCE_HIGH_PRICE_REF_MOVE_BPS must be >= DOMINANCE_REF_MOVE_BPS');
+  if (config.dominanceExtremePriceRefMoveBps < config.dominanceHighPriceRefMoveBps)
+    throw new Error('DOMINANCE_EXTREME_PRICE_REF_MOVE_BPS must be >= DOMINANCE_HIGH_PRICE_REF_MOVE_BPS');
+  if (config.dominanceHighPriceSizeMultiplier <= 0 || config.dominanceHighPriceSizeMultiplier > 1)
+    throw new Error('DOMINANCE_HIGH_PRICE_SIZE_MULTIPLIER must be between 0 and 1');
+  if (config.dominanceExtremePriceSizeMultiplier <= 0 || config.dominanceExtremePriceSizeMultiplier > 1)
+    throw new Error('DOMINANCE_EXTREME_PRICE_SIZE_MULTIPLIER must be between 0 and 1');
   if (config.dominanceRefInvalidationBps <= 0)
     throw new Error('DOMINANCE_REF_INVALIDATION_BPS must be > 0');
   if (config.dominanceRefInvalidationConfirmMs <= 0)
@@ -146,6 +176,8 @@ export function validateDominanceConfig() {
     throw new Error('DOMINANCE_MIN_TIME_LEFT_SEC must be less than DOMINANCE_LATE_ENTRY_WINDOW_SEC');
   if (config.dominanceStopLossCutoff > 0 && config.dominanceStopLossCutoff >= config.dominanceEntryCutoff)
     throw new Error('DOMINANCE_STOP_LOSS_CUTOFF must be less than DOMINANCE_ENTRY_CUTOFF');
+  if (config.dominanceHighPriceCutoff >= config.dominanceExtremePriceCutoff)
+    throw new Error('DOMINANCE_HIGH_PRICE_CUTOFF must be less than DOMINANCE_EXTREME_PRICE_CUTOFF');
   if (config.dominanceMaxEntryPrice <= config.dominanceEntryCutoff)
     throw new Error('DOMINANCE_MAX_ENTRY_PRICE must be greater than DOMINANCE_ENTRY_CUTOFF');
   if (config.dominanceTPCutoff <= config.dominanceEntryCutoff)

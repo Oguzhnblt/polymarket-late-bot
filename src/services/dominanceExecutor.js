@@ -308,12 +308,15 @@ async function monitorPosition(pos) {
 }
 
 export async function executeDominanceStrategy(results, direction) {
-    const perAssetSize = config.dominanceTradeSize;
-    const totalTradeSize = perAssetSize * results.length;
+    const sizedResults = results.map((res) => ({
+        ...res,
+        tradeSize: config.dominanceTradeSize * Math.max(0, Number(res.sizeMultiplier) || 1),
+    }));
+    const totalTradeSize = sizedResults.reduce((sum, res) => sum + res.tradeSize, 0);
 
     logger.info(
         `Executing Dominance Strategy: ${direction} direction | ` +
-        `${results.length} assets × $${perAssetSize.toFixed(2)} = $${totalTradeSize.toFixed(2)}`,
+        `${sizedResults.length} assets | total $${totalTradeSize.toFixed(2)}`,
     );
 
     if (!config.dryRun) {
@@ -330,13 +333,14 @@ export async function executeDominanceStrategy(results, direction) {
         virtualBalance -= totalTradeSize;
     }
 
-    for (const res of results) {
+    for (const res of sizedResults) {
         const m = res.market;
         const tokenId = direction === 'YES' ? m.yesTokenId : m.noTokenId;
+        const tradeSize = res.tradeSize;
 
-        logger.trade(`Trend BUY: ${m.asset.toUpperCase()} ${direction} | Per-asset size: $${perAssetSize.toFixed(2)}`);
+        logger.trade(`Trend BUY: ${m.asset.toUpperCase()} ${direction} | Size: $${tradeSize.toFixed(2)}`);
 
-        const buyRes = await marketBuy(tokenId, perAssetSize, m.tickSize, m.negRisk);
+        const buyRes = await marketBuy(tokenId, tradeSize, m.tickSize, m.negRisk);
         if (buyRes.success) {
             const pos = {
                 conditionId: m.conditionId,
@@ -361,6 +365,9 @@ export async function executeDominanceStrategy(results, direction) {
             logger.success(`Trend entry confirmed: ${m.asset.toUpperCase()} @ $${buyRes.price.toFixed(3)} | ${buyRes.shares.toFixed(2)} shares`);
         } else {
             logger.error(`Trend entry failed for ${m.asset.toUpperCase()}`);
+            if (config.dryRun) {
+                virtualBalance += tradeSize;
+            }
         }
     }
 }
