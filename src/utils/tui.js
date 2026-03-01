@@ -9,6 +9,7 @@ let summaryBox;
 let cardsWrapper;
 let cardsGrid;
 let activityLog;
+let historyBox;
 let assetCards = [];
 
 // ── Theme ──────────────────────────────────────────────────────────
@@ -26,6 +27,7 @@ const SECTION_GAP = 1;
 const MIN_CARD_WIDTH = 46;
 const CARD_HEIGHT = 16;
 const MIN_ACTIVITY_HEIGHT = 8;
+const HISTORY_PANEL_WIDTH = 40;
 
 // ── Card internal row offsets (inside border, 0-based) ─────────────
 //  0  HEADER        BTC  ▲ UP  ⏱ 4m 32s
@@ -122,21 +124,43 @@ function buildSummary() {
 
     const line2 = [
         kv('Ref', `${config.dominanceRefMoveBps}bps`),
-        kv('Exit', `${config.dominanceRefInvalidationBps}bps`),
         kv('Win', `${config.dominanceLateEntryWindowSec}–${config.dominanceMinTimeLeftSec}s`),
         kv('Entry', `${config.dominanceEntryCutoff}–${config.dominanceMaxEntryPrice}`),
+        kv('High', `${config.dominanceHighPriceCutoff}/${config.dominanceExtremePriceCutoff}`),
     ].join('  ');
 
     const line3 = [
         kv('Spr', `≤${config.dominanceMaxSpread}`),
         kv('Ask', `≥${config.dominanceMinTopSize}`),
         kv('Age', `≤${config.dominanceMaxBookAgeMs}ms`),
-        kv('SL', `${config.dominanceStopLossCutoff}`),
+        kv('Book', `-${Math.round(config.dominanceBookExitPriceDropPct * 100)}%/-${Math.round(config.dominanceHardExitPriceDropPct * 100)}%`),
         kv('TP', `${config.dominanceTPCutoff}`),
         kv('TC', `${config.dominanceTimeCutSec}s`),
     ].join('  ');
 
     summaryBox.setContent(` ${line1}\n ${line2}\n ${line3}`);
+}
+
+function buildHistory() {
+    if (!historyBox) return;
+
+    const trades = [...(getStats().trades || [])].reverse();
+    if (trades.length === 0) {
+        historyBox.setContent(' {gray-fg}No closed trades yet{/gray-fg}');
+        return;
+    }
+
+    const lines = trades.map((trade) => {
+        const side = trade.direction ? ` ${trade.direction}` : '';
+        return [
+            `{gray-fg}${truncate(trade.time, 8)}{/gray-fg}`,
+            `{bold}${trade.asset.toUpperCase()}${side}{/bold}`,
+            `{cyan-fg}${trade.type}{/cyan-fg}`,
+            fmtMoney(trade.pnl, { sign: true }),
+        ].join('  ');
+    });
+
+    historyBox.setContent(` ${lines.join('\n ')}`);
 }
 
 // ── Card content builder ───────────────────────────────────────────
@@ -257,8 +281,27 @@ function relayoutShell() {
     summaryBox.height = SUMMARY_HEIGHT;
     cardsWrapper.top = cardsTop;
     cardsWrapper.height = cardsH;
+
+    const bottomHeight = Math.max(MIN_ACTIVITY_HEIGHT, screen.height - actTop);
+    const showHistoryPanel = screen.width >= 120;
+
     activityLog.top = actTop;
-    activityLog.height = Math.max(MIN_ACTIVITY_HEIGHT, screen.height - actTop);
+    activityLog.height = bottomHeight;
+
+    if (showHistoryPanel) {
+        activityLog.left = 0;
+        activityLog.width = Math.max(40, screen.width - HISTORY_PANEL_WIDTH - 1);
+
+        historyBox.show();
+        historyBox.top = actTop;
+        historyBox.left = Math.max(0, screen.width - HISTORY_PANEL_WIDTH);
+        historyBox.width = HISTORY_PANEL_WIDTH;
+        historyBox.height = bottomHeight;
+    } else {
+        activityLog.left = 0;
+        activityLog.width = '100%';
+        historyBox.hide();
+    }
 }
 
 function layoutCards() {
@@ -319,6 +362,7 @@ function updateTUI() {
     try {
         buildHeader();
         buildSummary();
+        buildHistory();
         updateCards();
         screen.render();
     } catch {
@@ -373,10 +417,22 @@ export function initTUI() {
         style: { border: { fg: 'white' }, scrollbar: { bg: 'cyan' } },
     });
 
+    historyBox = blessed.box({
+        top: 26, left: 0, width: HISTORY_PANEL_WIDTH, height: 10,
+        label: ' ◆ Closed Trades ',
+        padding: { left: 1, right: 1 },
+        border: { type: 'line' },
+        tags: true,
+        scrollable: false,
+        hidden: true,
+        style: { border: { fg: 'yellow' } },
+    });
+
     screen.append(headerBox);
     screen.append(summaryBox);
     screen.append(cardsWrapper);
     screen.append(activityLog);
+    screen.append(historyBox);
 
     relayoutShell();
     layoutCards();

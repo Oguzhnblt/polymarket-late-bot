@@ -8,6 +8,7 @@ import logger from './utils/logger.js';
 import { initClient } from './services/client.js';
 import { startDominanceDetector, stopDominanceDetector } from './services/dominanceDetector.js';
 import { executeDominanceStrategy, getActiveDominancePositions, getStats } from './services/dominanceExecutor.js';
+import { getTradeHistoryPath } from './services/tradeHistory.js';
 import { stopPriceWatcher } from './services/wsPriceWatcher.js';
 import { initTUI, logToTUI } from './utils/tui.js';
 
@@ -47,20 +48,24 @@ logger.info(
 );
 logger.info(`Ref Move  : ${config.dominanceRefMoveBps}bps`);
 logger.info(
-    `Ref Bands : >= $${config.dominanceHighPriceCutoff} => ${config.dominanceHighPriceRefMoveBps}bps x${config.dominanceHighPriceSizeMultiplier.toFixed(2)} | ` +
-    `>= $${config.dominanceExtremePriceCutoff} => ${config.dominanceExtremePriceRefMoveBps}bps x${config.dominanceExtremePriceSizeMultiplier.toFixed(2)}`,
+    `Ref Bands : >= $${config.dominanceHighPriceCutoff} => ${config.dominanceHighPriceRefMoveBps}bps | ` +
+    `>= $${config.dominanceExtremePriceCutoff} => ${config.dominanceExtremePriceRefMoveBps}bps`,
 );
-logger.info(`Ref Exit  : ${config.dominanceRefInvalidationBps}bps / ${config.dominanceRefInvalidationConfirmMs}ms`);
 logger.info(`Window    : ${config.dominanceLateEntryWindowSec}s -> ${config.dominanceMinTimeLeftSec}s left`);
 logger.info(`Entry     : $${config.dominanceEntryCutoff} to $${config.dominanceMaxEntryPrice}`);
 logger.info(
     `Exec      : spread <= $${config.dominanceMaxSpread} | ` +
     `top ask >= ${config.dominanceMinTopSize} | book <= ${config.dominanceMaxBookAgeMs}ms`,
 );
-logger.info(`Panic Flr : < $${config.dominanceStopLossCutoff}`);
+logger.info(
+    `Book Exit : hard -${Math.round(config.dominanceHardExitPriceDropPct * 100)}% | ` +
+    `soft -${Math.round(config.dominanceBookExitPriceDropPct * 100)}% + ` +
+    `bidSize <= x${config.dominanceBookExitMinBidSizeRatio}`,
+);
 logger.info(`TP        : > $${config.dominanceTPCutoff}`);
 logger.info(`Time Cut  : ${config.dominanceTimeCutSec}s`);
 logger.info(`Size      : $${config.dominanceTradeSize} per asset`);
+logger.info(`History   : ${getStats().totalTrades} trades | ${getTradeHistoryPath()}`);
 
 startDominanceDetector(async (results, direction) => {
     try {

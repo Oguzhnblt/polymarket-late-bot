@@ -244,18 +244,15 @@ function getOracleEntryProfile(price) {
     if (price >= config.dominanceExtremePriceCutoff) {
         return {
             minRefMoveBps: config.dominanceExtremePriceRefMoveBps,
-            sizeMultiplier: config.dominanceExtremePriceSizeMultiplier,
         };
     }
     if (price >= config.dominanceHighPriceCutoff) {
         return {
             minRefMoveBps: config.dominanceHighPriceRefMoveBps,
-            sizeMultiplier: config.dominanceHighPriceSizeMultiplier,
         };
     }
     return {
         minRefMoveBps: config.dominanceRefMoveBps,
-        sizeMultiplier: 1,
     };
 }
 
@@ -371,8 +368,6 @@ async function checkDominance() {
                     noBookAgeMs: noExecution.bookAgeMs,
                     yesRequiredRefMoveBps: yesEntryProfile.minRefMoveBps,
                     noRequiredRefMoveBps: noEntryProfile.minRefMoveBps,
-                    yesSizeMultiplier: yesEntryProfile.sizeMultiplier,
-                    noSizeMultiplier: noEntryProfile.sizeMultiplier,
                     executionOk: direction === 'NO'
                         ? noExecution.bookFreshOk && noExecution.spreadOk && noExecution.topSizeOk
                         : yesExecution.bookFreshOk && yesExecution.spreadOk && yesExecution.topSizeOk,
@@ -481,7 +476,7 @@ async function checkDominance() {
                     logger.success(
                         `Asset Oracle Follow: ${m.asset.toUpperCase()} YES | ` +
                         `UP $${yesPrice.toFixed(3)} | ref ${refBias.deltaBps.toFixed(1)}bps | ` +
-                        `req ${yesEntryProfile.minRefMoveBps}bps | size x${yesEntryProfile.sizeMultiplier.toFixed(2)} | ` +
+                        `req ${yesEntryProfile.minRefMoveBps}bps | ` +
                         `src ${resolutionStream} | ` +
                         `${Math.round(msRemaining / 1000)}s left | Slot: ${slot}`,
                     );
@@ -494,7 +489,6 @@ async function checkDominance() {
                             refPrice: refBias.refState?.currentPrice || 0,
                             refOpenPrice: refBias.refState?.openPrice || 0,
                             refDeltaBps: refBias.deltaBps || 0,
-                            sizeMultiplier: yesEntryProfile.sizeMultiplier,
                             resolutionSource: m.resolutionSource,
                             resolutionStream,
                         }], 'YES');
@@ -506,7 +500,7 @@ async function checkDominance() {
                     logger.success(
                         `Asset Oracle Follow: ${m.asset.toUpperCase()} NO | ` +
                         `DOWN $${noPrice.toFixed(3)} | ref ${refBias.deltaBps.toFixed(1)}bps | ` +
-                        `req ${noEntryProfile.minRefMoveBps}bps | size x${noEntryProfile.sizeMultiplier.toFixed(2)} | ` +
+                        `req ${noEntryProfile.minRefMoveBps}bps | ` +
                         `src ${resolutionStream} | ` +
                         `${Math.round(msRemaining / 1000)}s left | Slot: ${slot}`,
                     );
@@ -519,7 +513,6 @@ async function checkDominance() {
                             refPrice: refBias.refState?.currentPrice || 0,
                             refOpenPrice: refBias.refState?.openPrice || 0,
                             refDeltaBps: refBias.deltaBps || 0,
-                            sizeMultiplier: noEntryProfile.sizeMultiplier,
                             resolutionSource: m.resolutionSource,
                             resolutionStream,
                         }], 'NO');

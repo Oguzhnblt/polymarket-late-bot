@@ -57,16 +57,14 @@ const config = {
   dominanceExtremePriceCutoff: Number(process.env.DOMINANCE_EXTREME_PRICE_CUTOFF),
   dominanceHighPriceRefMoveBps: Number(process.env.DOMINANCE_HIGH_PRICE_REF_MOVE_BPS),
   dominanceExtremePriceRefMoveBps: Number(process.env.DOMINANCE_EXTREME_PRICE_REF_MOVE_BPS),
-  dominanceHighPriceSizeMultiplier: Number(process.env.DOMINANCE_HIGH_PRICE_SIZE_MULTIPLIER),
-  dominanceExtremePriceSizeMultiplier: Number(process.env.DOMINANCE_EXTREME_PRICE_SIZE_MULTIPLIER),
-  dominanceRefInvalidationBps: Number(process.env.DOMINANCE_REF_INVALIDATION_BPS),
-  dominanceRefInvalidationConfirmMs: Number(process.env.DOMINANCE_REF_INVALIDATION_CONFIRM_MS),
   dominanceEntryCutoff: Number(process.env.DOMINANCE_ENTRY_CUTOFF),
   dominanceMaxEntryPrice: Number(process.env.DOMINANCE_MAX_ENTRY_PRICE),
   dominanceMaxSpread: Number(process.env.DOMINANCE_MAX_SPREAD),
   dominanceMinTopSize: Number(process.env.DOMINANCE_MIN_TOP_SIZE),
   dominanceMaxBookAgeMs: Number(process.env.DOMINANCE_MAX_BOOK_AGE_MS),
-  dominanceStopLossCutoff: Number(process.env.DOMINANCE_STOP_LOSS_CUTOFF),
+  dominanceHardExitPriceDropPct: Number(process.env.DOMINANCE_HARD_EXIT_PRICE_DROP_PCT),
+  dominanceBookExitPriceDropPct: Number(process.env.DOMINANCE_BOOK_EXIT_PRICE_DROP_PCT),
+  dominanceBookExitMinBidSizeRatio: Number(process.env.DOMINANCE_BOOK_EXIT_MIN_BID_SIZE_RATIO),
   dominanceTPCutoff: Number(process.env.DOMINANCE_TP_CUTOFF),
   dominanceTimeCutSec: Number(process.env.DOMINANCE_TIME_CUT_SEC),
   dominanceTradeSize: Number(process.env.DOMINANCE_TRADE_SIZE),
@@ -106,14 +104,6 @@ export function validateDominanceConfig() {
     throw new Error('DOMINANCE_HIGH_PRICE_REF_MOVE_BPS is required in .env');
   if (!Number.isFinite(config.dominanceExtremePriceRefMoveBps))
     throw new Error('DOMINANCE_EXTREME_PRICE_REF_MOVE_BPS is required in .env');
-  if (!Number.isFinite(config.dominanceHighPriceSizeMultiplier))
-    throw new Error('DOMINANCE_HIGH_PRICE_SIZE_MULTIPLIER is required in .env');
-  if (!Number.isFinite(config.dominanceExtremePriceSizeMultiplier))
-    throw new Error('DOMINANCE_EXTREME_PRICE_SIZE_MULTIPLIER is required in .env');
-  if (!Number.isFinite(config.dominanceRefInvalidationBps))
-    throw new Error('DOMINANCE_REF_INVALIDATION_BPS is required in .env');
-  if (!Number.isFinite(config.dominanceRefInvalidationConfirmMs))
-    throw new Error('DOMINANCE_REF_INVALIDATION_CONFIRM_MS is required in .env');
   if (!Number.isFinite(config.dominanceEntryCutoff))
     throw new Error('DOMINANCE_ENTRY_CUTOFF is required in .env');
   if (!Number.isFinite(config.dominanceMaxEntryPrice))
@@ -124,14 +114,16 @@ export function validateDominanceConfig() {
     throw new Error('DOMINANCE_MIN_TOP_SIZE is required in .env');
   if (!Number.isFinite(config.dominanceMaxBookAgeMs))
     throw new Error('DOMINANCE_MAX_BOOK_AGE_MS is required in .env');
-  if (!Number.isFinite(config.dominanceStopLossCutoff))
-    throw new Error('DOMINANCE_STOP_LOSS_CUTOFF is required in .env');
+  if (!Number.isFinite(config.dominanceHardExitPriceDropPct))
+    throw new Error('DOMINANCE_HARD_EXIT_PRICE_DROP_PCT is required in .env');
+  if (!Number.isFinite(config.dominanceBookExitPriceDropPct))
+    throw new Error('DOMINANCE_BOOK_EXIT_PRICE_DROP_PCT is required in .env');
+  if (!Number.isFinite(config.dominanceBookExitMinBidSizeRatio))
+    throw new Error('DOMINANCE_BOOK_EXIT_MIN_BID_SIZE_RATIO is required in .env');
   if (!Number.isFinite(config.dominanceTPCutoff))
     throw new Error('DOMINANCE_TP_CUTOFF is required in .env');
   if (!Number.isFinite(config.dominanceTimeCutSec))
     throw new Error('DOMINANCE_TIME_CUT_SEC is required in .env');
-  if (config.dominanceStopLossCutoff < 0 || config.dominanceStopLossCutoff >= 1)
-    throw new Error('DOMINANCE_STOP_LOSS_CUTOFF must be between 0 and 1, or 0 to disable');
   if (config.dominanceEntryCutoff <= 0 || config.dominanceEntryCutoff >= 1)
     throw new Error('DOMINANCE_ENTRY_CUTOFF must be between 0 and 1');
   if (config.dominanceMaxEntryPrice <= 0 || config.dominanceMaxEntryPrice >= 1)
@@ -146,6 +138,14 @@ export function validateDominanceConfig() {
     throw new Error('DOMINANCE_MIN_TOP_SIZE must be > 0');
   if (config.dominanceMaxBookAgeMs <= 0)
     throw new Error('DOMINANCE_MAX_BOOK_AGE_MS must be > 0');
+  if (config.dominanceHardExitPriceDropPct <= 0 || config.dominanceHardExitPriceDropPct >= 1)
+    throw new Error('DOMINANCE_HARD_EXIT_PRICE_DROP_PCT must be between 0 and 1');
+  if (config.dominanceBookExitPriceDropPct <= 0 || config.dominanceBookExitPriceDropPct >= 1)
+    throw new Error('DOMINANCE_BOOK_EXIT_PRICE_DROP_PCT must be between 0 and 1');
+  if (config.dominanceBookExitMinBidSizeRatio <= 0 || config.dominanceBookExitMinBidSizeRatio > 1)
+    throw new Error('DOMINANCE_BOOK_EXIT_MIN_BID_SIZE_RATIO must be between 0 and 1');
+  if (config.dominanceHardExitPriceDropPct <= config.dominanceBookExitPriceDropPct)
+    throw new Error('DOMINANCE_HARD_EXIT_PRICE_DROP_PCT must be greater than DOMINANCE_BOOK_EXIT_PRICE_DROP_PCT');
   if (config.dominanceLateEntryWindowSec <= 0)
     throw new Error('DOMINANCE_LATE_ENTRY_WINDOW_SEC must be > 0');
   if (config.dominanceMinTimeLeftSec < 0)
@@ -158,14 +158,6 @@ export function validateDominanceConfig() {
     throw new Error('DOMINANCE_HIGH_PRICE_REF_MOVE_BPS must be >= DOMINANCE_REF_MOVE_BPS');
   if (config.dominanceExtremePriceRefMoveBps < config.dominanceHighPriceRefMoveBps)
     throw new Error('DOMINANCE_EXTREME_PRICE_REF_MOVE_BPS must be >= DOMINANCE_HIGH_PRICE_REF_MOVE_BPS');
-  if (config.dominanceHighPriceSizeMultiplier <= 0 || config.dominanceHighPriceSizeMultiplier > 1)
-    throw new Error('DOMINANCE_HIGH_PRICE_SIZE_MULTIPLIER must be between 0 and 1');
-  if (config.dominanceExtremePriceSizeMultiplier <= 0 || config.dominanceExtremePriceSizeMultiplier > 1)
-    throw new Error('DOMINANCE_EXTREME_PRICE_SIZE_MULTIPLIER must be between 0 and 1');
-  if (config.dominanceRefInvalidationBps <= 0)
-    throw new Error('DOMINANCE_REF_INVALIDATION_BPS must be > 0');
-  if (config.dominanceRefInvalidationConfirmMs <= 0)
-    throw new Error('DOMINANCE_REF_INVALIDATION_CONFIRM_MS must be > 0');
   if (config.dominanceTimeCutSec < 0)
     throw new Error('DOMINANCE_TIME_CUT_SEC must be >= 0');
   if (config.dominanceAssets.some((asset) => !config.dominanceRefSymbols[asset]))
@@ -174,8 +166,6 @@ export function validateDominanceConfig() {
     throw new Error('DOMINANCE_CHAINLINK_STREAMS must include every asset in DOMINANCE_ASSETS');
   if (config.dominanceMinTimeLeftSec >= config.dominanceLateEntryWindowSec)
     throw new Error('DOMINANCE_MIN_TIME_LEFT_SEC must be less than DOMINANCE_LATE_ENTRY_WINDOW_SEC');
-  if (config.dominanceStopLossCutoff > 0 && config.dominanceStopLossCutoff >= config.dominanceEntryCutoff)
-    throw new Error('DOMINANCE_STOP_LOSS_CUTOFF must be less than DOMINANCE_ENTRY_CUTOFF');
   if (config.dominanceHighPriceCutoff >= config.dominanceExtremePriceCutoff)
     throw new Error('DOMINANCE_HIGH_PRICE_CUTOFF must be less than DOMINANCE_EXTREME_PRICE_CUTOFF');
   if (config.dominanceMaxEntryPrice <= config.dominanceEntryCutoff)

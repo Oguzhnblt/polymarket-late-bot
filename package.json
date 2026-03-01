@@ -6,10 +6,10 @@
   "type": "module",
   "scripts": {
     "start": "DRY_RUN=false node src/trend.js",
-    "dev": "DRY_RUN=true nodemon --ignore 'data/*.json' src/trend.js",
+    "dev": "DRY_RUN=true nodemon --ignore 'data/*.json' --ignore 'data/*.jsonl' src/trend.js",
     "trend": "DRY_RUN=false node src/trend.js",
     "trend-sim": "DRY_RUN=true node src/trend.js",
-    "trend-dev": "DRY_RUN=true nodemon --ignore 'data/*.json' src/trend.js"
+    "trend-dev": "DRY_RUN=true nodemon --ignore 'data/*.json' --ignore 'data/*.jsonl' src/trend.js"
   },
   "keywords": [
     "polymarket",

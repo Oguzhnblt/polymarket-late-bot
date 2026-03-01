@@ -6,22 +6,47 @@
 import { Side, OrderType } from '@polymarket/clob-client';
 import config from '../config/index.js';
 import { getClient, getUsdcBalance } from './client.js';
+import { getMarketTokenState } from './marketChannel.js';
 import { getLatestPrice } from './wsPriceWatcher.js';
-import { getReferencePriceState } from './referencePriceFeed.js';
 import { checkMarketResolution, checkOnChainPayout, redeemPosition } from './redeemer.js';
+import { appendTradeHistory, loadTradeHistory } from './tradeHistory.js';
 import logger from '../utils/logger.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const activePositions = new Map(); // conditionId -> pos
-const invalidationSince = new Map(); // conditionId -> timestamp
-let virtualBalance = 1000; // Starting paper balance
-let stats = {
-    totalTrades: 0,
-    successfulTrades: 0,
-    totalPnl: 0,
-    trades: [] // Last 10 trades for display
-};
+const MAX_RECENT_TRADES = 10;
+
+function formatTradeTime(closedAt) {
+    if (!closedAt) return new Date().toLocaleTimeString();
+    const dt = new Date(closedAt);
+    if (Number.isNaN(dt.getTime())) return new Date().toLocaleTimeString();
+    return dt.toLocaleTimeString();
+}
+
+function toRecentTrade(entry) {
+    return {
+        asset: entry.asset,
+        pnl: Number(entry.pnl) || 0,
+        exitPrice: Number(entry.exitPrice) || 0,
+        type: entry.type || 'UNKNOWN',
+        direction: entry.direction || '',
+        time: formatTradeTime(entry.closedAt),
+    };
+}
+
+function buildStatsFromHistory(entries) {
+    const totalTrades = entries.length;
+    const successfulTrades = entries.filter((entry) => Number(entry.pnl) > 0).length;
+    const totalPnl = entries.reduce((sum, entry) => sum + (Number(entry.pnl) || 0), 0);
+    const trades = entries.slice(-MAX_RECENT_TRADES).map(toRecentTrade);
+
+    return { totalTrades, successfulTrades, totalPnl, trades };
+}
+
+const persistedTrades = loadTradeHistory();
+let virtualBalance = 1000 + persistedTrades.reduce((sum, entry) => sum + (Number(entry.pnl) || 0), 0);
+let stats = buildStatsFromHistory(persistedTrades);
 
 function isGatewayError(err) {
     const msg = [err?.message, err?.response?.statusText, err?.response?.data?.error]
@@ -42,8 +67,18 @@ export function getActiveDominancePositions() {
     return Array.from(activePositions.values());
 }
 
-function clearInvalidation(conditionId) {
-    invalidationSince.delete(conditionId);
+function registerClosedTrade(entry) {
+    appendTradeHistory(entry);
+
+    stats.totalPnl += entry.pnl;
+    stats.totalTrades++;
+    if (entry.pnl > 0) {
+        stats.successfulTrades++;
+    }
+    stats.trades.push(toRecentTrade(entry));
+    if (stats.trades.length > MAX_RECENT_TRADES) {
+        stats.trades.shift();
+    }
 }
 
 function recordClosedTrade(pos, exitPrice, type) {
@@ -53,21 +88,21 @@ function recordClosedTrade(pos, exitPrice, type) {
         virtualBalance += pos.shares * exitPrice;
     }
 
-    stats.totalPnl += pnl;
-    stats.totalTrades++;
-    if (pnl > 0) {
-        stats.successfulTrades++;
-    }
-    stats.trades.push({
+    registerClosedTrade({
         asset: pos.asset,
+        direction: pos.direction,
         pnl,
         exitPrice,
         type,
-        time: new Date().toLocaleTimeString(),
+        entryPrice: pos.entryPrice,
+        shares: pos.shares,
+        conditionId: pos.conditionId,
+        tokenId: pos.tokenId,
+        question: pos.question,
+        mode: 'ORACLE_FOLLOW',
+        closeKind: 'MARKET_EXIT',
+        closedAt: new Date().toISOString(),
     });
-    if (stats.trades.length > 10) {
-        stats.trades.shift();
-    }
 
     return pnl;
 }
@@ -80,21 +115,22 @@ function recordResolvedTrade(pos, payoutFraction, type) {
         virtualBalance += returned;
     }
 
-    stats.totalPnl += pnl;
-    stats.totalTrades++;
-    if (payoutFraction > 0) {
-        stats.successfulTrades++;
-    }
-    stats.trades.push({
+    registerClosedTrade({
         asset: pos.asset,
+        direction: pos.direction,
         pnl,
         exitPrice: returned,
         type,
-        time: new Date().toLocaleTimeString(),
+        entryPrice: pos.entryPrice,
+        shares: pos.shares,
+        payoutFraction,
+        conditionId: pos.conditionId,
+        tokenId: pos.tokenId,
+        question: pos.question,
+        mode: 'ORACLE_FOLLOW',
+        closeKind: 'RESOLUTION',
+        closedAt: new Date().toISOString(),
     });
-    if (stats.trades.length > 10) {
-        stats.trades.shift();
-    }
 
     return { pnl, returned };
 }
@@ -214,6 +250,47 @@ async function settleExpiredPosition(pos) {
     }
 }
 
+function evaluateBookExit(pos, currentPrice) {
+    const state = getMarketTokenState(pos.tokenId);
+    if (!state || !state.bookTimestamp) return null;
+
+    const bookAgeMs = Date.now() - state.bookTimestamp;
+    if (bookAgeMs > config.dominanceMaxBookAgeMs) return null;
+
+    const reasons = [];
+    const displayPrice = Number(currentPrice) || 0;
+    const currentBidSize = Number(state.bestBidSize) || 0;
+
+    if (pos.entryPrice <= 0 || displayPrice <= 0) {
+        return null;
+    }
+
+    const priceDropPct = (pos.entryPrice - displayPrice) / pos.entryPrice;
+    if (priceDropPct < config.dominanceBookExitPriceDropPct) {
+        return null;
+    }
+
+    reasons.push(`price -${(priceDropPct * 100).toFixed(1)}%`);
+
+    if (priceDropPct >= config.dominanceHardExitPriceDropPct) {
+        reasons.push('hard-exit');
+        return { reasons, triggerPrice: displayPrice, priceDropPct };
+    }
+
+    if (pos.entryBestBidSize > 0 && currentBidSize >= 0) {
+        const bidSizeRatio = currentBidSize / pos.entryBestBidSize;
+        if (bidSizeRatio <= config.dominanceBookExitMinBidSizeRatio) {
+            reasons.push(`bidSize x${bidSizeRatio.toFixed(2)}`);
+        }
+    }
+
+    if (reasons.length < 2) {
+        return null;
+    }
+
+    return { reasons, triggerPrice: displayPrice, priceDropPct };
+}
+
 async function monitorPosition(pos) {
     const label = pos.question.substring(0, 40);
     logger.info(`Monitoring trend position: ${label} (${pos.direction})`);
@@ -234,34 +311,18 @@ async function monitorPosition(pos) {
             continue;
         }
 
-        const refState = getReferencePriceState(pos.asset);
-        if (refState?.currentPrice > 0 && refState?.openPrice > 0) {
-            const refDeltaBps = ((refState.currentPrice - refState.openPrice) / refState.openPrice) * 10000;
-            const invalidated = pos.direction === 'YES'
-                ? refDeltaBps <= -config.dominanceRefInvalidationBps
-                : refDeltaBps >= config.dominanceRefInvalidationBps;
-            if (invalidated) {
-                if (!invalidationSince.has(pos.conditionId)) {
-                    invalidationSince.set(pos.conditionId, Date.now());
-                }
-            } else {
-                clearInvalidation(pos.conditionId);
-            }
-
-            if (
-                invalidated &&
-                Date.now() - invalidationSince.get(pos.conditionId) >= config.dominanceRefInvalidationConfirmMs
-            ) {
-                logger.warn(
-                    `Trend oracle invalidation: ${pos.asset.toUpperCase()} ${pos.direction} | ` +
-                    `ref ${refDeltaBps >= 0 ? '+' : ''}${refDeltaBps.toFixed(1)}bps vs open`,
-                );
-                const res = await marketSell(pos.tokenId, pos.shares, pos.tickSize, pos.negRisk);
-                if (res.success) {
-                    const pnl = recordClosedTrade(pos, res.price, 'ORACLE');
-                    logger.warn(`Trend oracle exit executed @ $${res.price.toFixed(3)} | P&L: $${pnl.toFixed(2)}`);
-                    break;
-                }
+        const bookExit = evaluateBookExit(pos, currentPrice);
+        if (bookExit) {
+            logger.warn(
+                `Trend book exit triggered: ${pos.asset.toUpperCase()} ${pos.direction} | ` +
+                `triggerPx $${bookExit.triggerPrice.toFixed(3)} vs entry $${pos.entryPrice.toFixed(3)} | ` +
+                `${bookExit.reasons.join(' | ')}`,
+            );
+            const res = await marketSell(pos.tokenId, pos.shares, pos.tickSize, pos.negRisk);
+            if (res.success) {
+                const pnl = recordClosedTrade(pos, res.price, 'BOOK');
+                logger.warn(`Trend book exit executed @ $${res.price.toFixed(3)} | P&L: $${pnl.toFixed(2)}`);
+                break;
             }
         }
 
@@ -276,19 +337,7 @@ async function monitorPosition(pos) {
             }
         }
 
-        // 2. Panic floor: last-resort protection against a broken market or feed
-        const safetyCutoff = config.dominanceStopLossCutoff;
-        if (safetyCutoff > 0 && currentPrice < safetyCutoff) {
-            logger.warn(`Trend panic floor triggered: Price ${currentPrice.toFixed(3)} < ${safetyCutoff} | ${label}`);
-            const res = await marketSell(pos.tokenId, pos.shares, pos.tickSize, pos.negRisk);
-            if (res.success) {
-                const pnl = recordClosedTrade(pos, res.price, 'PANIC');
-                logger.warn(`Trend panic floor executed @ $${res.price.toFixed(3)} | P&L: $${pnl.toFixed(2)}`);
-                break;
-            }
-        }
-
-        // 3. Time-based exit for trend positions
+        // 2. Time-based exit for trend positions
         if (config.dominanceTimeCutSec > 0 && msRemaining <= config.dominanceTimeCutSec * 1000) {
             logger.warn(`Trend time cut triggered — ${label}`);
             const res = await marketSell(pos.tokenId, pos.shares, pos.tickSize, pos.negRisk);
@@ -300,17 +349,16 @@ async function monitorPosition(pos) {
             break;
         }
 
-        await sleep(2000);
+        await sleep(1000);
     }
 
-    clearInvalidation(pos.conditionId);
     activePositions.delete(pos.conditionId);
 }
 
 export async function executeDominanceStrategy(results, direction) {
     const sizedResults = results.map((res) => ({
         ...res,
-        tradeSize: config.dominanceTradeSize * Math.max(0, Number(res.sizeMultiplier) || 1),
+        tradeSize: config.dominanceTradeSize,
     }));
     const totalTradeSize = sizedResults.reduce((sum, res) => sum + res.tradeSize, 0);
 
@@ -357,6 +405,9 @@ export async function executeDominanceStrategy(results, direction) {
                 endTime: m.endTime,
                 tickSize: m.tickSize,
                 negRisk: m.negRisk,
+                entryTime: Date.now(),
+                entryBestBid: Number(getMarketTokenState(tokenId)?.bestBid) || 0,
+                entryBestBidSize: Number(getMarketTokenState(tokenId)?.bestBidSize) || 0,
                 resolving: false,
                 resolvingSince: 0,
             };
