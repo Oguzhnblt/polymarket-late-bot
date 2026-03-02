@@ -13,9 +13,19 @@ let signer = null;
 export async function initClient() {
     logger.info('Initializing Polymarket CLOB client...');
 
-    signer = new Wallet(config.privateKey);
-    logger.info(`EOA (signer)  : ${signer.address}`);
-    logger.info(`Proxy wallet  : ${config.proxyWallet}`);
+    if (config.privateKey && config.proxyWallet) {
+        signer = new Wallet(config.privateKey);
+        logger.info(`EOA (signer)  : ${signer.address}`);
+        logger.info(`Proxy wallet  : ${config.proxyWallet}`);
+    } else if (config.dryRun) {
+        signer = null;
+        clobClient = new ClobClient(config.clobHost, config.chainId);
+        logger.info('Dry run mode: starting public read-only CLOB client');
+        logger.success('CLOB client initialized');
+        return clobClient;
+    } else {
+        throw new Error('PRIVATE_KEY and PROXY_WALLET_ADDRESS are required for live trading');
+    }
 
     // Step 1: Create temp client to derive API credentials
     let apiCreds;

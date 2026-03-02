@@ -27,6 +27,7 @@ const staleBookWarnedKeys = new Set(); // `dominance-${slot}-${asset}-${directio
 const trackedTokenIds = new Set();
 const marketCacheBySlot = new Map(); // `dominance-${slot}` -> extracted market data[]
 const refSignalSince = new Map(); // `${slotKey}-${asset}-${direction}` -> timestamp
+const entrySignalSince = new Map(); // `${slotKey}-${asset}-${direction}` -> timestamp
 let currentMarketPrices = []; // [{ asset, price, direction }]
 
 export function getMarketPrices() {
@@ -65,6 +66,8 @@ function cleanupStaleState(activeSlot) {
             staleBookWarnedKeys.delete(`${key}-${market.asset}-NO`);
             refSignalSince.delete(`${key}-${market.asset}-YES`);
             refSignalSince.delete(`${key}-${market.asset}-NO`);
+            entrySignalSince.delete(`${key}-${market.asset}-YES`);
+            entrySignalSince.delete(`${key}-${market.asset}-NO`);
         }
     }
 }
@@ -240,20 +243,19 @@ function evaluateReferenceBias(asset, slotKey, msRemaining) {
     };
 }
 
-function getOracleEntryProfile(price) {
-    if (price >= config.dominanceExtremePriceCutoff) {
-        return {
-            minRefMoveBps: config.dominanceExtremePriceRefMoveBps,
-        };
+function evaluateEntryConfirmation(signalActive, signalKey) {
+    if (!signalActive) {
+        entrySignalSince.delete(signalKey);
+        return false;
     }
-    if (price >= config.dominanceHighPriceCutoff) {
-        return {
-            minRefMoveBps: config.dominanceHighPriceRefMoveBps,
-        };
+
+    const now = Date.now();
+    if (!entrySignalSince.has(signalKey)) {
+        entrySignalSince.set(signalKey, now);
+        return false;
     }
-    return {
-        minRefMoveBps: config.dominanceRefMoveBps,
-    };
+
+    return now - entrySignalSince.get(signalKey) >= config.dominanceRefConfirmMs;
 }
 
 async function checkDominance() {
@@ -313,8 +315,6 @@ async function checkDominance() {
                 const noMarketState = getMarketTokenState(m.noTokenId);
                 const yesExecution = passesExecutionGuard(yesMarketState);
                 const noExecution = passesExecutionGuard(noMarketState);
-                const yesEntryProfile = getOracleEntryProfile(yesPrice);
-                const noEntryProfile = getOracleEntryProfile(noPrice);
                 const direction = refBias.direction === 'NEUTRAL'
                     ? buildDisplayDirection(yesPrice, noPrice)
                     : refBias.direction;
@@ -329,7 +329,7 @@ async function checkDominance() {
                     && refBias.direction === 'YES'
                     && yesPrice >= config.dominanceEntryCutoff
                     && yesPrice <= config.dominanceMaxEntryPrice
-                    && Math.abs(refBias.deltaBps) >= yesEntryProfile.minRefMoveBps;
+                    && Math.abs(refBias.deltaBps) >= config.dominanceRefMoveBps;
                 const noSignal = sourceAligned
                     && refBias.confirmed
                     && !noTickLocked
@@ -339,7 +339,9 @@ async function checkDominance() {
                     && refBias.direction === 'NO'
                     && noPrice >= config.dominanceEntryCutoff
                     && noPrice <= config.dominanceMaxEntryPrice
-                    && Math.abs(refBias.deltaBps) >= noEntryProfile.minRefMoveBps;
+                    && Math.abs(refBias.deltaBps) >= config.dominanceRefMoveBps;
+                const yesEntryReady = evaluateEntryConfirmation(yesSignal, `${signalKey}-YES`);
+                const noEntryReady = evaluateEntryConfirmation(noSignal, `${signalKey}-NO`);
 
                 currentMarketPrices.push({
                     asset: m.asset,
@@ -366,8 +368,10 @@ async function checkDominance() {
                     noTopSize: noExecution.topSize,
                     yesBookAgeMs: yesExecution.bookAgeMs,
                     noBookAgeMs: noExecution.bookAgeMs,
-                    yesRequiredRefMoveBps: yesEntryProfile.minRefMoveBps,
-                    noRequiredRefMoveBps: noEntryProfile.minRefMoveBps,
+                    yesRequiredRefMoveBps: config.dominanceRefMoveBps,
+                    noRequiredRefMoveBps: config.dominanceRefMoveBps,
+                    yesEntryReady,
+                    noEntryReady,
                     executionOk: direction === 'NO'
                         ? noExecution.bookFreshOk && noExecution.spreadOk && noExecution.topSizeOk
                         : yesExecution.bookFreshOk && yesExecution.spreadOk && yesExecution.topSizeOk,
@@ -472,11 +476,11 @@ async function checkDominance() {
                     liquidityWarnedKeys.add(`${signalKey}-NO`);
                 }
 
-                if (yesSignal && !seenKeys.has(signalKey)) {
+                if (yesSignal && yesEntryReady && !seenKeys.has(signalKey)) {
                     logger.success(
                         `Asset Oracle Follow: ${m.asset.toUpperCase()} YES | ` +
                         `UP $${yesPrice.toFixed(3)} | ref ${refBias.deltaBps.toFixed(1)}bps | ` +
-                        `req ${yesEntryProfile.minRefMoveBps}bps | ` +
+                        `req ${config.dominanceRefMoveBps}bps | ` +
                         `src ${resolutionStream} | ` +
                         `${Math.round(msRemaining / 1000)}s left | Slot: ${slot}`,
                     );
@@ -496,11 +500,11 @@ async function checkDominance() {
                     continue;
                 }
 
-                if (noSignal && !seenKeys.has(signalKey)) {
+                if (noSignal && noEntryReady && !seenKeys.has(signalKey)) {
                     logger.success(
                         `Asset Oracle Follow: ${m.asset.toUpperCase()} NO | ` +
                         `DOWN $${noPrice.toFixed(3)} | ref ${refBias.deltaBps.toFixed(1)}bps | ` +
-                        `req ${noEntryProfile.minRefMoveBps}bps | ` +
+                        `req ${config.dominanceRefMoveBps}bps | ` +
                         `src ${resolutionStream} | ` +
                         `${Math.round(msRemaining / 1000)}s left | Slot: ${slot}`,
                     );
@@ -540,6 +544,7 @@ export function startDominanceDetector(onDominance) {
     trackedTokenIds.clear();
     marketCacheBySlot.clear();
     refSignalSince.clear();
+    entrySignalSince.clear();
     startReferencePriceFeed();
 
     checkDominance();
@@ -558,6 +563,7 @@ export function stopDominanceDetector() {
     }
     cleanupStaleState(Number.MAX_SAFE_INTEGER);
     refSignalSince.clear();
+    entrySignalSince.clear();
     sourceWarnedKeys.clear();
     tickSizeWarnedKeys.clear();
     liquidityWarnedKeys.clear();

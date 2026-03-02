@@ -17,6 +17,26 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const activePositions = new Map(); // conditionId -> pos
 const MAX_RECENT_TRADES = 10;
 
+function pickTakeProfitPct() {
+    const minPct = config.dominanceTpPctMin;
+    const maxPct = config.dominanceTpPctMax;
+    if (maxPct <= minPct) return minPct;
+    return minPct + (Math.random() * (maxPct - minPct));
+}
+
+function buildTakeProfitTarget(entryPrice) {
+    const takeProfitPct = pickTakeProfitPct();
+    const desiredPrice = entryPrice * (1 + takeProfitPct);
+    const takeProfitPrice = Math.min(desiredPrice, config.dominanceTPCutoff);
+    const effectivePct = entryPrice > 0 ? ((takeProfitPrice / entryPrice) - 1) : 0;
+    return {
+        takeProfitPct,
+        takeProfitPrice,
+        effectivePct,
+        cappedByCutoff: takeProfitPrice < desiredPrice,
+    };
+}
+
 function formatTradeTime(closedAt) {
     if (!closedAt) return new Date().toLocaleTimeString();
     const dt = new Date(closedAt);
@@ -327,8 +347,11 @@ async function monitorPosition(pos) {
         }
 
         // 1. Check Take Profit
-        if (currentPrice >= config.dominanceTPCutoff) {
-            logger.money(`Trend TP Triggered: Price ${currentPrice.toFixed(3)} >= ${config.dominanceTPCutoff} | ${label}`);
+        if (currentPrice >= pos.takeProfitPrice) {
+            logger.money(
+                `Trend TP Triggered: Price ${currentPrice.toFixed(3)} >= ${pos.takeProfitPrice.toFixed(3)} | ` +
+                `${label} | target +${(pos.effectiveTakeProfitPct * 100).toFixed(1)}%`,
+            );
             const res = await marketSell(pos.tokenId, pos.shares, pos.tickSize, pos.negRisk);
             if (res.success) {
                 const pnl = recordClosedTrade(pos, res.price, 'TP');
@@ -390,6 +413,7 @@ export async function executeDominanceStrategy(results, direction) {
 
         const buyRes = await marketBuy(tokenId, tradeSize, m.tickSize, m.negRisk);
         if (buyRes.success) {
+            const tpTarget = buildTakeProfitTarget(buyRes.price);
             const pos = {
                 conditionId: m.conditionId,
                 question: m.question,
@@ -408,12 +432,20 @@ export async function executeDominanceStrategy(results, direction) {
                 entryTime: Date.now(),
                 entryBestBid: Number(getMarketTokenState(tokenId)?.bestBid) || 0,
                 entryBestBidSize: Number(getMarketTokenState(tokenId)?.bestBidSize) || 0,
+                takeProfitPrice: tpTarget.takeProfitPrice,
+                takeProfitPct: tpTarget.takeProfitPct,
+                effectiveTakeProfitPct: tpTarget.effectivePct,
+                takeProfitCapped: tpTarget.cappedByCutoff,
                 resolving: false,
                 resolvingSince: 0,
             };
             activePositions.set(m.conditionId, pos);
             monitorPosition(pos); // non-blocking
-            logger.success(`Trend entry confirmed: ${m.asset.toUpperCase()} @ $${buyRes.price.toFixed(3)} | ${buyRes.shares.toFixed(2)} shares`);
+            logger.success(
+                `Trend entry confirmed: ${m.asset.toUpperCase()} @ $${buyRes.price.toFixed(3)} | ` +
+                `${buyRes.shares.toFixed(2)} shares | TP $${pos.takeProfitPrice.toFixed(3)} ` +
+                `(+${(pos.effectiveTakeProfitPct * 100).toFixed(1)}%${pos.takeProfitCapped ? ', capped' : ''})`,
+            );
         } else {
             logger.error(`Trend entry failed for ${m.asset.toUpperCase()}`);
             if (config.dryRun) {

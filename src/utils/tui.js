@@ -126,7 +126,6 @@ function buildSummary() {
         kv('Ref', `${config.dominanceRefMoveBps}bps`),
         kv('Win', `${config.dominanceLateEntryWindowSec}–${config.dominanceMinTimeLeftSec}s`),
         kv('Entry', `${config.dominanceEntryCutoff}–${config.dominanceMaxEntryPrice}`),
-        kv('High', `${config.dominanceHighPriceCutoff}/${config.dominanceExtremePriceCutoff}`),
     ].join('  ');
 
     const line3 = [
@@ -134,7 +133,7 @@ function buildSummary() {
         kv('Ask', `≥${config.dominanceMinTopSize}`),
         kv('Age', `≤${config.dominanceMaxBookAgeMs}ms`),
         kv('Book', `-${Math.round(config.dominanceBookExitPriceDropPct * 100)}%/-${Math.round(config.dominanceHardExitPriceDropPct * 100)}%`),
-        kv('TP', `${config.dominanceTPCutoff}`),
+        kv('TP', `${Math.round(config.dominanceTpPctMin * 100)}-${Math.round(config.dominanceTpPctMax * 100)}%`),
         kv('TC', `${config.dominanceTimeCutSec}s`),
     ].join('  ');
 
@@ -223,11 +222,14 @@ function buildCardContent(asset, marketMap, positionsMap, innerW) {
         pnlLine = ` {gray-fg}PNL {/gray-fg} —`;
     } else {
         const posText = `${pos.direction} ${pos.shares.toFixed(2)} @ ${fmtPrice(pos.entryPrice)}`;
+        const tpText = pos.takeProfitPrice > 0
+            ? `  TP ${fmtPrice(pos.takeProfitPrice)}`
+            : '';
         if (pos.resolving || !match) {
-            posLine = ` {gray-fg}POS {/gray-fg} ${DOT_WARN} {yellow-fg}${truncate(posText, innerW - 12)}{/yellow-fg}`;
+            posLine = ` {gray-fg}POS {/gray-fg} ${DOT_WARN} {yellow-fg}${truncate(posText + tpText, innerW - 12)}{/yellow-fg}`;
             pnlLine = ` {gray-fg}PNL {/gray-fg} {gray-fg}resolving…{/gray-fg}`;
         } else {
-            posLine = ` {gray-fg}POS {/gray-fg} {white-fg}${truncate(posText, innerW - 8)}{/white-fg}`;
+            posLine = ` {gray-fg}POS {/gray-fg} {white-fg}${truncate(posText + tpText, innerW - 8)}{/white-fg}`;
             const cur = pos.direction === 'YES' ? yesP : noP;
             pnlLine = cur > 0
                 ? ` {gray-fg}PNL {/gray-fg} ${fmtMoney((cur - pos.entryPrice) * pos.shares, { sign: true })} {gray-fg}live{/gray-fg}`

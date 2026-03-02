@@ -53,10 +53,6 @@ const config = {
   dominanceMinTimeLeftSec: Number(process.env.DOMINANCE_MIN_TIME_LEFT_SEC),
   dominanceRefMoveBps: Number(process.env.DOMINANCE_REF_MOVE_BPS),
   dominanceRefConfirmMs: Number(process.env.DOMINANCE_REF_CONFIRM_MS),
-  dominanceHighPriceCutoff: Number(process.env.DOMINANCE_HIGH_PRICE_CUTOFF),
-  dominanceExtremePriceCutoff: Number(process.env.DOMINANCE_EXTREME_PRICE_CUTOFF),
-  dominanceHighPriceRefMoveBps: Number(process.env.DOMINANCE_HIGH_PRICE_REF_MOVE_BPS),
-  dominanceExtremePriceRefMoveBps: Number(process.env.DOMINANCE_EXTREME_PRICE_REF_MOVE_BPS),
   dominanceEntryCutoff: Number(process.env.DOMINANCE_ENTRY_CUTOFF),
   dominanceMaxEntryPrice: Number(process.env.DOMINANCE_MAX_ENTRY_PRICE),
   dominanceMaxSpread: Number(process.env.DOMINANCE_MAX_SPREAD),
@@ -65,18 +61,26 @@ const config = {
   dominanceHardExitPriceDropPct: Number(process.env.DOMINANCE_HARD_EXIT_PRICE_DROP_PCT),
   dominanceBookExitPriceDropPct: Number(process.env.DOMINANCE_BOOK_EXIT_PRICE_DROP_PCT),
   dominanceBookExitMinBidSizeRatio: Number(process.env.DOMINANCE_BOOK_EXIT_MIN_BID_SIZE_RATIO),
+  dominanceTpPctMin: Number(process.env.DOMINANCE_TP_PCT_MIN),
+  dominanceTpPctMax: Number(process.env.DOMINANCE_TP_PCT_MAX),
   dominanceTPCutoff: Number(process.env.DOMINANCE_TP_CUTOFF),
   dominanceTimeCutSec: Number(process.env.DOMINANCE_TIME_CUT_SEC),
   dominanceTradeSize: Number(process.env.DOMINANCE_TRADE_SIZE),
 };
 
+function validateWalletConfig() {
+  if (!config.dryRun) {
+    const required = ['privateKey', 'proxyWallet'];
+    const missing = required.filter((key) => !config[key]);
+    if (missing.length > 0) {
+      throw new Error(`Missing required config: ${missing.join(', ')}. Check your .env file.`);
+    }
+  }
+}
+
 // Validation for Dominance bot
 export function validateDominanceConfig() {
-  const required = ['privateKey', 'proxyWallet'];
-  const missing = required.filter((key) => !config[key]);
-  if (missing.length > 0) {
-    throw new Error(`Missing required config: ${missing.join(', ')}. Check your .env file.`);
-  }
+  validateWalletConfig();
   if (config.dominanceAssets.length === 0)
     throw new Error('DOMINANCE_ASSETS is required in .env');
   if (!['5m', '15m'].includes(config.dominanceDuration))
@@ -96,14 +100,6 @@ export function validateDominanceConfig() {
     throw new Error('DOMINANCE_REF_MOVE_BPS is required in .env');
   if (!Number.isFinite(config.dominanceRefConfirmMs))
     throw new Error('DOMINANCE_REF_CONFIRM_MS is required in .env');
-  if (!Number.isFinite(config.dominanceHighPriceCutoff))
-    throw new Error('DOMINANCE_HIGH_PRICE_CUTOFF is required in .env');
-  if (!Number.isFinite(config.dominanceExtremePriceCutoff))
-    throw new Error('DOMINANCE_EXTREME_PRICE_CUTOFF is required in .env');
-  if (!Number.isFinite(config.dominanceHighPriceRefMoveBps))
-    throw new Error('DOMINANCE_HIGH_PRICE_REF_MOVE_BPS is required in .env');
-  if (!Number.isFinite(config.dominanceExtremePriceRefMoveBps))
-    throw new Error('DOMINANCE_EXTREME_PRICE_REF_MOVE_BPS is required in .env');
   if (!Number.isFinite(config.dominanceEntryCutoff))
     throw new Error('DOMINANCE_ENTRY_CUTOFF is required in .env');
   if (!Number.isFinite(config.dominanceMaxEntryPrice))
@@ -120,6 +116,10 @@ export function validateDominanceConfig() {
     throw new Error('DOMINANCE_BOOK_EXIT_PRICE_DROP_PCT is required in .env');
   if (!Number.isFinite(config.dominanceBookExitMinBidSizeRatio))
     throw new Error('DOMINANCE_BOOK_EXIT_MIN_BID_SIZE_RATIO is required in .env');
+  if (!Number.isFinite(config.dominanceTpPctMin))
+    throw new Error('DOMINANCE_TP_PCT_MIN is required in .env');
+  if (!Number.isFinite(config.dominanceTpPctMax))
+    throw new Error('DOMINANCE_TP_PCT_MAX is required in .env');
   if (!Number.isFinite(config.dominanceTPCutoff))
     throw new Error('DOMINANCE_TP_CUTOFF is required in .env');
   if (!Number.isFinite(config.dominanceTimeCutSec))
@@ -128,10 +128,6 @@ export function validateDominanceConfig() {
     throw new Error('DOMINANCE_ENTRY_CUTOFF must be between 0 and 1');
   if (config.dominanceMaxEntryPrice <= 0 || config.dominanceMaxEntryPrice >= 1)
     throw new Error('DOMINANCE_MAX_ENTRY_PRICE must be between 0 and 1');
-  if (config.dominanceHighPriceCutoff <= 0 || config.dominanceHighPriceCutoff >= 1)
-    throw new Error('DOMINANCE_HIGH_PRICE_CUTOFF must be between 0 and 1');
-  if (config.dominanceExtremePriceCutoff <= 0 || config.dominanceExtremePriceCutoff >= 1)
-    throw new Error('DOMINANCE_EXTREME_PRICE_CUTOFF must be between 0 and 1');
   if (config.dominanceMaxSpread <= 0 || config.dominanceMaxSpread >= 1)
     throw new Error('DOMINANCE_MAX_SPREAD must be between 0 and 1');
   if (config.dominanceMinTopSize <= 0)
@@ -144,8 +140,14 @@ export function validateDominanceConfig() {
     throw new Error('DOMINANCE_BOOK_EXIT_PRICE_DROP_PCT must be between 0 and 1');
   if (config.dominanceBookExitMinBidSizeRatio <= 0 || config.dominanceBookExitMinBidSizeRatio > 1)
     throw new Error('DOMINANCE_BOOK_EXIT_MIN_BID_SIZE_RATIO must be between 0 and 1');
+  if (config.dominanceTpPctMin <= 0 || config.dominanceTpPctMin >= 1)
+    throw new Error('DOMINANCE_TP_PCT_MIN must be between 0 and 1');
+  if (config.dominanceTpPctMax <= 0 || config.dominanceTpPctMax >= 1)
+    throw new Error('DOMINANCE_TP_PCT_MAX must be between 0 and 1');
   if (config.dominanceHardExitPriceDropPct <= config.dominanceBookExitPriceDropPct)
     throw new Error('DOMINANCE_HARD_EXIT_PRICE_DROP_PCT must be greater than DOMINANCE_BOOK_EXIT_PRICE_DROP_PCT');
+  if (config.dominanceTpPctMin > config.dominanceTpPctMax)
+    throw new Error('DOMINANCE_TP_PCT_MIN must be less than or equal to DOMINANCE_TP_PCT_MAX');
   if (config.dominanceLateEntryWindowSec <= 0)
     throw new Error('DOMINANCE_LATE_ENTRY_WINDOW_SEC must be > 0');
   if (config.dominanceMinTimeLeftSec < 0)
@@ -154,10 +156,6 @@ export function validateDominanceConfig() {
     throw new Error('DOMINANCE_REF_MOVE_BPS must be > 0');
   if (config.dominanceRefConfirmMs <= 0)
     throw new Error('DOMINANCE_REF_CONFIRM_MS must be > 0');
-  if (config.dominanceHighPriceRefMoveBps < config.dominanceRefMoveBps)
-    throw new Error('DOMINANCE_HIGH_PRICE_REF_MOVE_BPS must be >= DOMINANCE_REF_MOVE_BPS');
-  if (config.dominanceExtremePriceRefMoveBps < config.dominanceHighPriceRefMoveBps)
-    throw new Error('DOMINANCE_EXTREME_PRICE_REF_MOVE_BPS must be >= DOMINANCE_HIGH_PRICE_REF_MOVE_BPS');
   if (config.dominanceTimeCutSec < 0)
     throw new Error('DOMINANCE_TIME_CUT_SEC must be >= 0');
   if (config.dominanceAssets.some((asset) => !config.dominanceRefSymbols[asset]))
@@ -166,8 +164,6 @@ export function validateDominanceConfig() {
     throw new Error('DOMINANCE_CHAINLINK_STREAMS must include every asset in DOMINANCE_ASSETS');
   if (config.dominanceMinTimeLeftSec >= config.dominanceLateEntryWindowSec)
     throw new Error('DOMINANCE_MIN_TIME_LEFT_SEC must be less than DOMINANCE_LATE_ENTRY_WINDOW_SEC');
-  if (config.dominanceHighPriceCutoff >= config.dominanceExtremePriceCutoff)
-    throw new Error('DOMINANCE_HIGH_PRICE_CUTOFF must be less than DOMINANCE_EXTREME_PRICE_CUTOFF');
   if (config.dominanceMaxEntryPrice <= config.dominanceEntryCutoff)
     throw new Error('DOMINANCE_MAX_ENTRY_PRICE must be greater than DOMINANCE_ENTRY_CUTOFF');
   if (config.dominanceTPCutoff <= config.dominanceEntryCutoff)

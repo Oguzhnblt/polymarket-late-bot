@@ -7,7 +7,7 @@ import config from './config/index.js';
 import logger from './utils/logger.js';
 import { initClient } from './services/client.js';
 import { startDominanceDetector, stopDominanceDetector } from './services/dominanceDetector.js';
-import { executeDominanceStrategy, getActiveDominancePositions, getStats } from './services/dominanceExecutor.js';
+import { executeDominanceStrategy, getStats } from './services/dominanceExecutor.js';
 import { getTradeHistoryPath } from './services/tradeHistory.js';
 import { stopPriceWatcher } from './services/wsPriceWatcher.js';
 import { initTUI, logToTUI } from './utils/tui.js';
@@ -47,10 +47,7 @@ logger.info(
         .join(' | ')}`,
 );
 logger.info(`Ref Move  : ${config.dominanceRefMoveBps}bps`);
-logger.info(
-    `Ref Bands : >= $${config.dominanceHighPriceCutoff} => ${config.dominanceHighPriceRefMoveBps}bps | ` +
-    `>= $${config.dominanceExtremePriceCutoff} => ${config.dominanceExtremePriceRefMoveBps}bps`,
-);
+logger.info(`Confirm   : ref ${config.dominanceRefConfirmMs}ms + entry ${config.dominanceRefConfirmMs}ms`);
 logger.info(`Window    : ${config.dominanceLateEntryWindowSec}s -> ${config.dominanceMinTimeLeftSec}s left`);
 logger.info(`Entry     : $${config.dominanceEntryCutoff} to $${config.dominanceMaxEntryPrice}`);
 logger.info(
@@ -62,7 +59,10 @@ logger.info(
     `soft -${Math.round(config.dominanceBookExitPriceDropPct * 100)}% + ` +
     `bidSize <= x${config.dominanceBookExitMinBidSizeRatio}`,
 );
-logger.info(`TP        : > $${config.dominanceTPCutoff}`);
+logger.info(
+    `TP        : +${Math.round(config.dominanceTpPctMin * 100)}% to +${Math.round(config.dominanceTpPctMax * 100)}% ` +
+    `(cap $${config.dominanceTPCutoff})`,
+);
 logger.info(`Time Cut  : ${config.dominanceTimeCutSec}s`);
 logger.info(`Size      : $${config.dominanceTradeSize} per asset`);
 logger.info(`History   : ${getStats().totalTrades} trades | ${getTradeHistoryPath()}`);
